@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity 0.6.8;
+pragma solidity ^0.8.4;
 pragma experimental ABIEncoderV2;
 
-import { SafeMath } from "@openzeppelin/contracts/math/SafeMath.sol";
+import { SafeMath } from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import { IERC721, IERC165 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
-import { IMarket, Decimal } from "@zoralabs/core/dist/contracts/interfaces/IMarket.sol";
-import { IMedia } from "@zoralabs/core/dist/contracts/interfaces/IMedia.sol";
+import { IMarket, Decimal } from "./zora/interfaces/IMarket.sol";
+import { IMedia } from "./zora/interfaces/IMedia.sol";
 import { IAuctionHouse } from "./interfaces/IAuctionHouse.sol";
+import {
+    ReentrancyGuard
+} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
 
 interface IWETH {
     function deposit() external payable;
@@ -27,7 +30,7 @@ interface IMediaExtended is IMedia {
 /**
  * @title An open auction house, enabling collectors and curators to run their own auctions
  */
-contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
+contract AuctionHouse is IAuctionHouse, ReentrancyGuard, UUPSUpgradeable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
@@ -106,7 +109,7 @@ contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
             reservePrice: reservePrice,
             curatorFeePercentage: curatorFeePercentage,
             tokenOwner: tokenOwner,
-            bidder: address(0),
+            bidder: payable(address(0)),
             curator: curator,
             auctionCurrency: auctionCurrency
         });
@@ -198,7 +201,7 @@ contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
         _handleIncomingBid(amount, auctions[auctionId].auctionCurrency);
 
         auctions[auctionId].amount = amount;
-        auctions[auctionId].bidder = msg.sender;
+        auctions[auctionId].bidder = payable(msg.sender);
 
 
         bool extended = false;
@@ -405,4 +408,9 @@ contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
     // TODO: consider reverting if the message sender is not WETH
     receive() external payable {}
     fallback() external payable {}
+
+    function _authorizeUpgrade(address newImplementation)
+		internal
+		override
+	{}
 }
