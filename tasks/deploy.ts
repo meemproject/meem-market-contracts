@@ -1,5 +1,6 @@
 import { HardhatEthersHelpers } from '@nomiclabs/hardhat-ethers/types'
 import { HardhatUpgrades } from '@openzeppelin/hardhat-upgrades'
+import { getImplementationAddress } from '@openzeppelin/upgrades-core'
 import { task } from 'hardhat/config'
 import { HardhatArguments } from 'hardhat/types'
 
@@ -49,16 +50,19 @@ export async function deploy(options: {
 	const AuctionHouse = await ethers.getContractFactory('AuctionHouse')
 	console.log([contractAddress, wethAddress])
 	// const auctionHouse = await AuctionHouse.deploy(contractAddress, wethAddress)
-	const auctionHouse = await upgrades.deployProxy(
-		AuctionHouse,
-		[contractAddress, wethAddress],
-		{
-			kind: 'uups'
-		}
-	)
+	const auctionHouse = await upgrades.deployProxy(AuctionHouse, [wethAddress], {
+		kind: 'uups'
+	})
 
 	await auctionHouse.deployed()
-	deployedContracts.AuctionHouse = auctionHouse.address
+	deployedContracts.AuctionHouseProxy = auctionHouse.address
+
+	const currentImplAddress = await getImplementationAddress(
+		ethers.provider,
+		auctionHouse.address
+	)
+
+	deployedContracts.AuctionHouse = currentImplAddress
 
 	console.log({
 		deployedContracts

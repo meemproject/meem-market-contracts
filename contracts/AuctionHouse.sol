@@ -14,6 +14,7 @@ import {IAuctionHouse} from './interfaces/IAuctionHouse.sol';
 import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
 import '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 
 interface IWETH {
 	function deposit() external payable;
@@ -33,6 +34,7 @@ interface IMediaExtended is IMedia {
 contract AuctionHouse is
 	Initializable,
 	UUPSUpgradeable,
+	OwnableUpgradeable,
 	IAuctionHouse,
 	ReentrancyGuardUpgradeable
 {
@@ -68,6 +70,8 @@ contract AuctionHouse is
 	 * Constructor
 	 */
 	function initialize(address _weth) public initializer {
+		__Ownable_init();
+		__UUPSUpgradeable_init();
 		wethAddress = _weth;
 		timeBuffer = 15 * 60; // extend 15 minutes after every bid made in last 15 minutes
 		minBidIncrementPercentage = 5; // 5%

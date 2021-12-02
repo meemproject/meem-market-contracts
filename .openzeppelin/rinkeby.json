@@ -1,6 +1,17 @@
 {
   "manifestVersion": "3.2",
-  "proxies": [],
+  "proxies": [
+    {
+      "address": "0xBC4DfA2F0EfA9849F1F7015b0C16a0E9F3CCDeee",
+      "txHash": "0x9b33d51aff33c7285e3d250a8af23d27b03c39f0771011c4c68de7b26aa08d15",
+      "kind": "uups"
+    },
+    {
+      "address": "0xb82C92E96727DD8d6d552BeD4D952CF550618909",
+      "txHash": "0x917d2716d6ea4b024252caa209d8a4e54267c8e4c4713bc0ed4c63e54533e381",
+      "kind": "uups"
+    }
+  ],
   "impls": {
     "4e05badddbda651de5feebe40be89cb3707e72c927ce81efe83f64ae0cc646d2": {
       "address": "0x661C474aCdD6ccFA06215952E53b50f072aEB54e",
@@ -147,6 +158,186 @@
             "label": "address payable"
           },
           "t_struct(Counter)1291_storage": {
+            "label": "struct CountersUpgradeable.Counter",
+            "members": [
+              {
+                "label": "_value",
+                "type": "t_uint256"
+              }
+            ]
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "a1b837cde67cb784e83dd1b1a8153f7f07411b53b4d31cb167683deea28f550a": {
+      "address": "0x2249FF0EAae30bB3eDD1865d82DBC845C20432ba",
+      "txHash": "0x044edd7afaef561640bec2fe2e819c5f3e907a48d3463bac50259e22803f775a",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:37"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:42"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:215"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:81"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:82"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "_status",
+            "type": "t_uint256",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "contract": "ReentrancyGuardUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:68"
+          },
+          {
+            "contract": "AuctionHouse",
+            "label": "timeBuffer",
+            "type": "t_uint256",
+            "src": "contracts/AuctionHouse.sol:46"
+          },
+          {
+            "contract": "AuctionHouse",
+            "label": "minBidIncrementPercentage",
+            "type": "t_uint8",
+            "src": "contracts/AuctionHouse.sol:49"
+          },
+          {
+            "contract": "AuctionHouse",
+            "label": "wethAddress",
+            "type": "t_address",
+            "src": "contracts/AuctionHouse.sol:52"
+          },
+          {
+            "contract": "AuctionHouse",
+            "label": "auctions",
+            "type": "t_mapping(t_uint256,t_struct(Auction)5848_storage)",
+            "src": "contracts/AuctionHouse.sol:55"
+          },
+          {
+            "contract": "AuctionHouse",
+            "label": "_auctionIdTracker",
+            "type": "t_struct(Counter)1461_storage",
+            "src": "contracts/AuctionHouse.sol:59"
+          }
+        ],
+        "types": {
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_uint8": {
+            "label": "uint8"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_mapping(t_uint256,t_struct(Auction)5848_storage)": {
+            "label": "mapping(uint256 => struct IAuctionHouse.Auction)"
+          },
+          "t_struct(Auction)5848_storage": {
+            "label": "struct IAuctionHouse.Auction",
+            "members": [
+              {
+                "label": "tokenId",
+                "type": "t_uint256"
+              },
+              {
+                "label": "tokenContract",
+                "type": "t_address"
+              },
+              {
+                "label": "approved",
+                "type": "t_bool"
+              },
+              {
+                "label": "amount",
+                "type": "t_uint256"
+              },
+              {
+                "label": "duration",
+                "type": "t_uint256"
+              },
+              {
+                "label": "firstBidTime",
+                "type": "t_uint256"
+              },
+              {
+                "label": "reservePrice",
+                "type": "t_uint256"
+              },
+              {
+                "label": "curatorFeePercentage",
+                "type": "t_uint8"
+              },
+              {
+                "label": "tokenOwner",
+                "type": "t_address"
+              },
+              {
+                "label": "bidder",
+                "type": "t_address_payable"
+              },
+              {
+                "label": "curator",
+                "type": "t_address_payable"
+              },
+              {
+                "label": "auctionCurrency",
+                "type": "t_address"
+              }
+            ]
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_address_payable": {
+            "label": "address payable"
+          },
+          "t_struct(Counter)1461_storage": {
             "label": "struct CountersUpgradeable.Counter",
             "members": [
               {
