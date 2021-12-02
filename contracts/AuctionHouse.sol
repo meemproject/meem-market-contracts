@@ -8,8 +8,6 @@ import {IERC721Upgradeable, IERC165Upgradeable} from '@openzeppelin/contracts-up
 import {IERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 import {SafeERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
 import {CountersUpgradeable} from '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
-import {IMarket, Decimal} from './zora/interfaces/IMarket.sol';
-import {IMedia} from './zora/interfaces/IMedia.sol';
 import {IAuctionHouse} from './interfaces/IAuctionHouse.sol';
 import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
@@ -21,10 +19,6 @@ interface IWETH {
 	function withdraw(uint256 wad) external;
 
 	function transfer(address to, uint256 value) external returns (bool);
-}
-
-interface IMediaExtended is IMedia {
-	function marketContract() external returns (address);
 }
 
 /**
