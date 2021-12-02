@@ -46,9 +46,6 @@ contract AuctionHouse is
 	// The minimum percentage difference between the last bid amount and the current bid.
 	uint8 public minBidIncrementPercentage;
 
-	// The address of the zora protocol to use via this contract
-	address public zora;
-
 	// / The address of the WETH contract, so that any ETH transferred can be handled as an ERC-20
 	address public wethAddress;
 
@@ -70,12 +67,7 @@ contract AuctionHouse is
 	/*
 	 * Constructor
 	 */
-	function initialize(address _zora, address _weth) public initializer {
-		require(
-			IERC165Upgradeable(_zora).supportsInterface(interfaceId),
-			"Doesn't support NFT interface"
-		);
-		zora = _zora;
+	function initialize(address _weth) public initializer {
 		wethAddress = _weth;
 		timeBuffer = 15 * 60; // extend 15 minutes after every bid made in last 15 minutes
 		minBidIncrementPercentage = 5; // 5%
@@ -242,17 +234,6 @@ contract AuctionHouse is
 			'Must send more than last bid by minBidIncrementPercentage amount'
 		);
 
-		// For Zora Protocol, ensure that the bid is valid for the current bidShare configuration
-		if (auctions[auctionId].tokenContract == zora) {
-			require(
-				IMarket(IMediaExtended(zora).marketContract()).isValidBid(
-					auctions[auctionId].tokenId,
-					amount
-				),
-				'Bid invalid for share splitting'
-			);
-		}
-
 		// If this is the first valid bid, we should set the starting time now.
 		// If it's not, then we should refund the last bidder
 		if (auctions[auctionId].firstBidTime == 0) {
@@ -346,40 +327,22 @@ contract AuctionHouse is
 
 		uint256 tokenOwnerProfit = auctions[auctionId].amount;
 
-		if (auctions[auctionId].tokenContract == zora) {
-			// If the auction is running on zora, settle it on the protocol
-			(
-				bool success,
-				uint256 remainingProfit
-			) = _handleZoraAuctionSettlement(auctionId);
-			tokenOwnerProfit = remainingProfit;
-			if (success != true) {
-				_handleOutgoingBid(
+		// Otherwise, transfer the token to the winner and pay out the participants below
+		try
+			IERC721Upgradeable(auctions[auctionId].tokenContract)
+				.safeTransferFrom(
+					address(this),
 					auctions[auctionId].bidder,
-					auctions[auctionId].amount,
-					auctions[auctionId].auctionCurrency
-				);
-				_cancelAuction(auctionId);
-				return;
-			}
-		} else {
-			// Otherwise, transfer the token to the winner and pay out the participants below
-			try
-				IERC721Upgradeable(auctions[auctionId].tokenContract)
-					.safeTransferFrom(
-						address(this),
-						auctions[auctionId].bidder,
-						auctions[auctionId].tokenId
-					)
-			{} catch {
-				_handleOutgoingBid(
-					auctions[auctionId].bidder,
-					auctions[auctionId].amount,
-					auctions[auctionId].auctionCurrency
-				);
-				_cancelAuction(auctionId);
-				return;
-			}
+					auctions[auctionId].tokenId
+				)
+		{} catch {
+			_handleOutgoingBid(
+				auctions[auctionId].bidder,
+				auctions[auctionId].amount,
+				auctions[auctionId].auctionCurrency
+			);
+			_cancelAuction(auctionId);
+			return;
 		}
 
 		if (auctions[auctionId].curator != address(0)) {
@@ -520,43 +483,43 @@ contract AuctionHouse is
 		return auctions[auctionId].tokenOwner != address(0);
 	}
 
-	function _handleZoraAuctionSettlement(uint256 auctionId)
-		internal
-		returns (bool, uint256)
-	{
-		address currency = auctions[auctionId].auctionCurrency == address(0)
-			? wethAddress
-			: auctions[auctionId].auctionCurrency;
+	// function _handleZoraAuctionSettlement(uint256 auctionId)
+	// 	internal
+	// 	returns (bool, uint256)
+	// {
+	// 	address currency = auctions[auctionId].auctionCurrency == address(0)
+	// 		? wethAddress
+	// 		: auctions[auctionId].auctionCurrency;
 
-		IMarket.Bid memory bid = IMarket.Bid({
-			amount: auctions[auctionId].amount,
-			currency: currency,
-			bidder: address(this),
-			recipient: auctions[auctionId].bidder,
-			sellOnShare: Decimal.D256(0)
-		});
+	// 	IMarket.Bid memory bid = IMarket.Bid({
+	// 		amount: auctions[auctionId].amount,
+	// 		currency: currency,
+	// 		bidder: address(this),
+	// 		recipient: auctions[auctionId].bidder,
+	// 		sellOnShare: Decimal.D256(0)
+	// 	});
 
-		IERC20Upgradeable(currency).approve(
-			IMediaExtended(zora).marketContract(),
-			bid.amount
-		);
-		IMedia(zora).setBid(auctions[auctionId].tokenId, bid);
-		uint256 beforeBalance = IERC20Upgradeable(currency).balanceOf(
-			address(this)
-		);
-		try IMedia(zora).acceptBid(auctions[auctionId].tokenId, bid) {} catch {
-			// If the underlying NFT transfer here fails, we should cancel the auction and refund the winner
-			IMediaExtended(zora).removeBid(auctions[auctionId].tokenId);
-			return (false, 0);
-		}
-		uint256 afterBalance = IERC20Upgradeable(currency).balanceOf(
-			address(this)
-		);
+	// 	IERC20Upgradeable(currency).approve(
+	// 		IMediaExtended(zora).marketContract(),
+	// 		bid.amount
+	// 	);
+	// 	IMedia(zora).setBid(auctions[auctionId].tokenId, bid);
+	// 	uint256 beforeBalance = IERC20Upgradeable(currency).balanceOf(
+	// 		address(this)
+	// 	);
+	// 	try IMedia(zora).acceptBid(auctions[auctionId].tokenId, bid) {} catch {
+	// 		// If the underlying NFT transfer here fails, we should cancel the auction and refund the winner
+	// 		IMediaExtended(zora).removeBid(auctions[auctionId].tokenId);
+	// 		return (false, 0);
+	// 	}
+	// 	uint256 afterBalance = IERC20Upgradeable(currency).balanceOf(
+	// 		address(this)
+	// 	);
 
-		// We have to calculate the amount to send to the token owner here in case there was a
-		// sell-on share on the token
-		return (true, afterBalance.sub(beforeBalance));
-	}
+	// 	// We have to calculate the amount to send to the token owner here in case there was a
+	// 	// sell-on share on the token
+	// 	return (true, afterBalance.sub(beforeBalance));
+	// }
 
 	// TODO: consider reverting if the message sender is not WETH
 	receive() external payable {}
