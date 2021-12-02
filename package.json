@@ -24,6 +24,7 @@
     "release": "semantic-release",
     "size": "hardhat size-contracts",
     "deploy": "hardhat deploy",
+    "upgradeContract": "hardhat upgradeContract",
     "network": "hardhat node",
     "watch": "concurrently -r --kill-others \"chokidar 'contracts/**/*.sol' -c 'yarn build:contracts'\""
   },
@@ -44,7 +45,7 @@
     "chai-as-promised": "^7.1.1",
     "chokidar-cli": "^3.0.0",
     "concurrently": "^6.4.0",
-    "eslint": "^8.3.0",
+    "eslint": "^7.32.0",
     "eslint-config-kengoldfarb": "^1.3.0",
     "ethereum-waffle": "^3.3.0",
     "ethers": "^5.0.32",

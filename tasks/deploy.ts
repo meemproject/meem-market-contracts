@@ -1,11 +1,7 @@
-import path from 'path'
 import { HardhatEthersHelpers } from '@nomiclabs/hardhat-ethers/types'
-import { ethers as Ethers } from 'ethers'
-import fs from 'fs-extra'
+import { HardhatUpgrades } from '@openzeppelin/hardhat-upgrades'
 import { task } from 'hardhat/config'
 import { HardhatArguments } from 'hardhat/types'
-import { HardhatUpgrades } from '@openzeppelin/hardhat-upgrades'
-
 
 export async function deploy(options: {
 	ethers: HardhatEthersHelpers
@@ -51,8 +47,8 @@ export async function deploy(options: {
 	}
 
 	const AuctionHouse = await ethers.getContractFactory('AuctionHouse')
-	// const auctionHouse = await AuctionHouse.deploy(contractAddress, wethAddress)
 	console.log([contractAddress, wethAddress])
+	// const auctionHouse = await AuctionHouse.deploy(contractAddress, wethAddress)
 	const auctionHouse = await upgrades.deployProxy(
 		AuctionHouse,
 		[contractAddress, wethAddress],
