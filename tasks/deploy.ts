@@ -50,9 +50,13 @@ export async function deploy(options: {
 	const AuctionHouse = await ethers.getContractFactory('AuctionHouse')
 	console.log([contractAddress, wethAddress])
 	// const auctionHouse = await AuctionHouse.deploy(contractAddress, wethAddress)
-	const auctionHouse = await upgrades.deployProxy(AuctionHouse, [wethAddress], {
-		kind: 'uups'
-	})
+	const auctionHouse = await upgrades.deployProxy(
+		AuctionHouse,
+		[contractAddress, wethAddress],
+		{
+			kind: 'uups'
+		}
+	)
 
 	await auctionHouse.deployed()
 	deployedContracts.AuctionHouseProxy = auctionHouse.address

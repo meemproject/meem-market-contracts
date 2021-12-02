@@ -26,6 +26,7 @@
     "deploy": "hardhat deploy",
     "upgradeContract": "hardhat upgradeContract",
     "network": "hardhat node",
+    "console": "hardhat console",
     "watch": "concurrently -r --kill-others \"chokidar 'contracts/**/*.sol' -c 'yarn build:contracts'\""
   },
   "devDependencies": {

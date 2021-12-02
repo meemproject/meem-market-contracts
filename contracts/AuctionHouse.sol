@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
 import {SafeMathUpgradeable} from '@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol';
@@ -11,10 +11,9 @@ import {CountersUpgradeable} from '@openzeppelin/contracts-upgradeable/utils/Cou
 import {IMarket, Decimal} from './zora/interfaces/IMarket.sol';
 import {IMedia} from './zora/interfaces/IMedia.sol';
 import {IAuctionHouse} from './interfaces/IAuctionHouse.sol';
-import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
 import '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 
 interface IWETH {
 	function deposit() external payable;
@@ -34,7 +33,6 @@ interface IMediaExtended is IMedia {
 contract AuctionHouse is
 	Initializable,
 	UUPSUpgradeable,
-	OwnableUpgradeable,
 	IAuctionHouse,
 	ReentrancyGuardUpgradeable
 {
@@ -47,6 +45,9 @@ contract AuctionHouse is
 
 	// The minimum percentage difference between the last bid amount and the current bid.
 	uint8 public minBidIncrementPercentage;
+
+	// The address of the meem contract
+	address public meemContract;
 
 	// / The address of the WETH contract, so that any ETH transferred can be handled as an ERC-20
 	address public wethAddress;
@@ -69,12 +70,22 @@ contract AuctionHouse is
 	/*
 	 * Constructor
 	 */
-	function initialize(address _weth) public initializer {
-		__Ownable_init();
+	function initialize(address _meemContract, address _weth) public {
+		require(
+			IERC165Upgradeable(_meemContract).supportsInterface(interfaceId),
+			"Doesn't support NFT interface"
+		);
+
 		__UUPSUpgradeable_init();
+
+		meemContract = _meemContract;
 		wethAddress = _weth;
 		timeBuffer = 15 * 60; // extend 15 minutes after every bid made in last 15 minutes
 		minBidIncrementPercentage = 5; // 5%
+	}
+
+	function echo() public pure returns (string memory) {
+		return 'Hello Auction House!';
 	}
 
 	/**
@@ -238,6 +249,17 @@ contract AuctionHouse is
 			'Must send more than last bid by minBidIncrementPercentage amount'
 		);
 
+		// For Zora Protocol, ensure that the bid is valid for the current bidShare configuration
+		// if (auctions[auctionId].tokenContract == zora) {
+		// 	require(
+		// 		IMarket(IMediaExtended(zora).marketContract()).isValidBid(
+		// 			auctions[auctionId].tokenId,
+		// 			amount
+		// 		),
+		// 		'Bid invalid for share splitting'
+		// 	);
+		// }
+
 		// If this is the first valid bid, we should set the starting time now.
 		// If it's not, then we should refund the last bidder
 		if (auctions[auctionId].firstBidTime == 0) {
@@ -331,6 +353,23 @@ contract AuctionHouse is
 
 		uint256 tokenOwnerProfit = auctions[auctionId].amount;
 
+		// if (auctions[auctionId].tokenContract == zora) {
+		// 	// If the auction is running on zora, settle it on the protocol
+		// 	(
+		// 		bool success,
+		// 		uint256 remainingProfit
+		// 	) = _handleZoraAuctionSettlement(auctionId);
+		// 	tokenOwnerProfit = remainingProfit;
+		// 	if (success != true) {
+		// 		_handleOutgoingBid(
+		// 			auctions[auctionId].bidder,
+		// 			auctions[auctionId].amount,
+		// 			auctions[auctionId].auctionCurrency
+		// 		);
+		// 		_cancelAuction(auctionId);
+		// 		return;
+		// 	}
+		// } else {
 		// Otherwise, transfer the token to the winner and pay out the participants below
 		try
 			IERC721Upgradeable(auctions[auctionId].tokenContract)
@@ -348,6 +387,7 @@ contract AuctionHouse is
 			_cancelAuction(auctionId);
 			return;
 		}
+		// }
 
 		if (auctions[auctionId].curator != address(0)) {
 			curatorFee = tokenOwnerProfit
