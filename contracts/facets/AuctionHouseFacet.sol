@@ -24,7 +24,7 @@ interface IWETH {
 /**
  * @title An open auction house, enabling collectors and curators to run their own auctions
  */
-contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
+contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 	using SafeMathUpgradeable for uint256;
 	using SafeERC20Upgradeable for IERC20Upgradeable;
 

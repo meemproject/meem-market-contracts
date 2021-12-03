@@ -11,7 +11,7 @@ pragma solidity ^0.8.0;
 import '@solidstate/contracts/proxy/diamond/Diamond.sol';
 import '@solidstate/contracts/introspection/ERC165.sol';
 
-contract AuctionHouseDiamond is Diamond {
+contract MeemMarketDiamond is Diamond {
 	using ERC165Storage for ERC165Storage.Layout;
 
 	constructor() {}
