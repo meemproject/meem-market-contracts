@@ -7,11 +7,11 @@ import {SafeMathUpgradeable} from '@openzeppelin/contracts-upgradeable/utils/mat
 import {IERC721Upgradeable, IERC165Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol';
 import {IERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 import {SafeERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
-import {CountersUpgradeable} from '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
-import {IAuctionHouse} from './interfaces/IAuctionHouse.sol';
-import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
-import '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
+import {IAuctionHouse} from '../interfaces/IAuctionHouse.sol';
+import '@solidstate/contracts/utils/ReentrancyGuard.sol';
+import {Constants} from '../libraries/Constants.sol';
+import {AuctionAlreadyActive, AuctionNotFound} from '../libraries/Errors.sol';
+import {LibAppStorage} from '../storage/LibAppStorage.sol';
 
 interface IWETH {
 	function deposit() external payable;
@@ -24,59 +24,55 @@ interface IWETH {
 /**
  * @title An open auction house, enabling collectors and curators to run their own auctions
  */
-contract AuctionHouse is
-	Initializable,
-	UUPSUpgradeable,
-	IAuctionHouse,
-	ReentrancyGuardUpgradeable
-{
+contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
 	using SafeMathUpgradeable for uint256;
 	using SafeERC20Upgradeable for IERC20Upgradeable;
-	using CountersUpgradeable for CountersUpgradeable.Counter;
 
-	// The minimum amount of time left in an auction after a new bid is created
-	uint256 public timeBuffer;
+	// // The minimum amount of time left in an auction after a new bid is created
+	// uint256 public timeBuffer;
 
-	// The minimum percentage difference between the last bid amount and the current bid.
-	uint8 public minBidIncrementPercentage;
+	// // The minimum percentage difference between the last bid amount and the current bid.
+	// uint8 public minBidIncrementPercentage;
 
-	// The address of the meem contract
-	address public meemContract;
+	// // The address of the meem contract
+	// address public meemContract;
 
-	// / The address of the WETH contract, so that any ETH transferred can be handled as an ERC-20
-	address public wethAddress;
+	// // / The address of the WETH contract, so that any ETH transferred can be handled as an ERC-20
+	// address public wethAddress;
 
-	// A mapping of all of the auctions currently running.
-	mapping(uint256 => IAuctionHouse.Auction) public auctions;
+	// // A mapping of all of the auctions currently running.
+	// mapping(uint256 => IAuctionHouse.Auction) public auctions;
 
-	bytes4 constant interfaceId = 0x80ac58cd; // 721 interface id
+	// bytes4 constant interfaceId = 0x80ac58cd; // 721 interface id
 
-	CountersUpgradeable.Counter private _auctionIdTracker;
+	// CountersUpgradeable.Counter private _auctionIdTracker;
 
 	/**
 	 * @notice Require that the specified auction exists
 	 */
-	modifier auctionExists(uint256 auctionId) {
-		require(_exists(auctionId), "Auction doesn't exist");
+	modifier auctionExists(address tokenContract, uint256 tokenId) {
+		if (!_exists(tokenContract, tokenId)) {
+			revert AuctionNotFound();
+		}
 		_;
 	}
 
 	/*
 	 * Constructor
 	 */
-	function initialize(address _meemContract, address _weth) public {
-		require(
-			IERC165Upgradeable(_meemContract).supportsInterface(interfaceId),
-			"Doesn't support NFT interface"
-		);
+	// function initialize(address _meemContract, address _weth) public {
+	// 	require(
+	// 		IERC165Upgradeable(_meemContract).supportsInterface(interfaceId),
+	// 		"Doesn't support NFT interface"
+	// 	);
 
-		__UUPSUpgradeable_init();
+	// 	__UUPSUpgradeable_init();
 
-		meemContract = _meemContract;
-		wethAddress = _weth;
-		timeBuffer = 15 * 60; // extend 15 minutes after every bid made in last 15 minutes
-		minBidIncrementPercentage = 5; // 5%
-	}
+	// 	meemContract = _meemContract;
+	// 	wethAddress = _weth;
+	// 	timeBuffer = 15 * 60; // extend 15 minutes after every bid made in last 15 minutes
+	// 	minBidIncrementPercentage = 5; // 5%
+	// }
 
 	function echo() public pure returns (string memory) {
 		return 'Hello Auction House!';
@@ -88,8 +84,8 @@ contract AuctionHouse is
 	 * If there is no curator, or if the curator is the auction creator, automatically approve the auction.
 	 */
 	function createAuction(
-		uint256 tokenId,
 		address tokenContract,
+		uint256 tokenId,
 		uint256 duration,
 		uint256 reservePrice,
 		address payable curator,
@@ -97,7 +93,9 @@ contract AuctionHouse is
 		address auctionCurrency
 	) public override nonReentrant returns (uint256) {
 		require(
-			IERC165Upgradeable(tokenContract).supportsInterface(interfaceId),
+			IERC165Upgradeable(tokenContract).supportsInterface(
+				Constants.erc721InterfaceId
+			),
 			'tokenContract does not support ERC721 interface'
 		);
 		require(
@@ -111,9 +109,16 @@ contract AuctionHouse is
 				msg.sender == tokenOwner,
 			'Caller must be approved or owner for token id'
 		);
-		uint256 auctionId = _auctionIdTracker.current();
 
-		auctions[auctionId] = Auction({
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		// uint256 auctionId = _auctionIdTracker.current();
+
+		if (s.auctions[tokenContract][tokenId].isActive) {
+			revert AuctionAlreadyActive();
+		}
+
+		s.auctions[tokenContract][tokenId] = Auction({
+			isActive: true,
 			tokenId: tokenId,
 			tokenContract: tokenContract,
 			approved: false,
@@ -125,7 +130,9 @@ contract AuctionHouse is
 			tokenOwner: tokenOwner,
 			bidder: payable(address(0)),
 			curator: curator,
-			auctionCurrency: auctionCurrency
+			auctionCurrency: auctionCurrency,
+			timeBuffer: s.timeBuffer,
+			minBidIncrementPercentage: s.minBidIncrementPercentage
 		});
 
 		IERC721Upgradeable(tokenContract).transferFrom(
@@ -134,12 +141,11 @@ contract AuctionHouse is
 			tokenId
 		);
 
-		_auctionIdTracker.increment();
+		// _auctionIdTracker.increment();
 
 		emit AuctionCreated(
-			auctionId,
-			tokenId,
 			tokenContract,
+			tokenId,
 			duration,
 			reservePrice,
 			tokenOwner,
@@ -149,57 +155,55 @@ contract AuctionHouse is
 		);
 
 		if (
-			auctions[auctionId].curator == address(0) || curator == tokenOwner
+			s.auctions[tokenContract][tokenId].curator == address(0) ||
+			curator == tokenOwner
 		) {
-			_approveAuction(auctionId, true);
+			_approveAuction(tokenContract, tokenId, true);
 		}
-
-		return auctionId;
 	}
 
 	/**
 	 * @notice Approve an auction, opening up the auction for bids.
 	 * @dev Only callable by the curator. Cannot be called if the auction has already started.
 	 */
-	function setAuctionApproval(uint256 auctionId, bool approved)
-		external
-		override
-		auctionExists(auctionId)
-	{
+	function setAuctionApproval(
+		address tokenContract,
+		uint256 tokenId,
+		bool approved
+	) external override auctionExists(tokenContract, tokenId) {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
 		require(
-			msg.sender == auctions[auctionId].curator,
+			msg.sender == s.auctions[tokenContract][tokenId].curator,
 			'Must be auction curator'
 		);
 		require(
-			auctions[auctionId].firstBidTime == 0,
+			s.auctions[tokenContract][tokenId].firstBidTime == 0,
 			'Auction has already started'
 		);
-		_approveAuction(auctionId, approved);
+		_approveAuction(tokenContract, tokenId, approved);
 	}
 
-	function setAuctionReservePrice(uint256 auctionId, uint256 reservePrice)
-		external
-		override
-		auctionExists(auctionId)
-	{
+	function setAuctionReservePrice(
+		address tokenContract,
+		uint256 tokenId,
+		uint256 reservePrice
+	) external override auctionExists(tokenContract, tokenId) {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
 		require(
-			msg.sender == auctions[auctionId].curator ||
-				msg.sender == auctions[auctionId].tokenOwner,
+			msg.sender == s.auctions[tokenContract][tokenId].curator ||
+				msg.sender == s.auctions[tokenContract][tokenId].tokenOwner,
 			'Must be auction curator or token owner'
 		);
 		require(
-			auctions[auctionId].firstBidTime == 0,
+			s.auctions[tokenContract][tokenId].firstBidTime == 0,
 			'Auction has already started'
 		);
 
-		auctions[auctionId].reservePrice = reservePrice;
+		s.auctions[tokenContract][tokenId].reservePrice = reservePrice;
 
-		emit AuctionReservePriceUpdated(
-			auctionId,
-			auctions[auctionId].tokenId,
-			auctions[auctionId].tokenContract,
-			reservePrice
-		);
+		emit AuctionReservePriceUpdated(tokenContract, tokenId, reservePrice);
 	}
 
 	/**
@@ -208,99 +212,100 @@ contract AuctionHouse is
 	 * If the auction is run in native ETH, the ETH is wrapped so it can be identically to other
 	 * auction currencies in this contract.
 	 */
-	function createBid(uint256 auctionId, uint256 amount)
+	function createBid(
+		address tokenContract,
+		uint256 tokenId,
+		uint256 amount
+	)
 		external
 		payable
 		override
-		auctionExists(auctionId)
+		auctionExists(tokenContract, tokenId)
 		nonReentrant
 	{
-		address payable lastBidder = auctions[auctionId].bidder;
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		address payable lastBidder = s.auctions[tokenContract][tokenId].bidder;
 		require(
-			auctions[auctionId].approved,
+			s.auctions[tokenContract][tokenId].approved,
 			'Auction must be approved by curator'
 		);
 		require(
-			auctions[auctionId].firstBidTime == 0 ||
+			s.auctions[tokenContract][tokenId].firstBidTime == 0 ||
 				block.timestamp <
-				auctions[auctionId].firstBidTime.add(
-					auctions[auctionId].duration
+				s.auctions[tokenContract][tokenId].firstBidTime.add(
+					s.auctions[tokenContract][tokenId].duration
 				),
 			'Auction expired'
 		);
 		require(
-			amount >= auctions[auctionId].reservePrice,
+			amount >= s.auctions[tokenContract][tokenId].reservePrice,
 			'Must send at least reservePrice'
 		);
 		require(
 			amount >=
-				auctions[auctionId].amount.add(
-					auctions[auctionId]
+				s.auctions[tokenContract][tokenId].amount.add(
+					s
+						.auctions[tokenContract][tokenId]
 						.amount
-						.mul(minBidIncrementPercentage)
+						.mul(s.minBidIncrementPercentage)
 						.div(100)
 				),
 			'Must send more than last bid by minBidIncrementPercentage amount'
 		);
 
-		// For Zora Protocol, ensure that the bid is valid for the current bidShare configuration
-		// if (auctions[auctionId].tokenContract == zora) {
-		// 	require(
-		// 		IMarket(IMediaExtended(zora).marketContract()).isValidBid(
-		// 			auctions[auctionId].tokenId,
-		// 			amount
-		// 		),
-		// 		'Bid invalid for share splitting'
-		// 	);
-		// }
-
 		// If this is the first valid bid, we should set the starting time now.
 		// If it's not, then we should refund the last bidder
-		if (auctions[auctionId].firstBidTime == 0) {
-			auctions[auctionId].firstBidTime = block.timestamp;
+		if (s.auctions[tokenContract][tokenId].firstBidTime == 0) {
+			s.auctions[tokenContract][tokenId].firstBidTime = block.timestamp;
 		} else if (lastBidder != address(0)) {
 			_handleOutgoingBid(
 				lastBidder,
-				auctions[auctionId].amount,
-				auctions[auctionId].auctionCurrency
+				s.auctions[tokenContract][tokenId].amount,
+				s.auctions[tokenContract][tokenId].auctionCurrency
 			);
 		}
 
-		_handleIncomingBid(amount, auctions[auctionId].auctionCurrency);
+		_handleIncomingBid(
+			amount,
+			s.auctions[tokenContract][tokenId].auctionCurrency
+		);
 
-		auctions[auctionId].amount = amount;
-		auctions[auctionId].bidder = payable(msg.sender);
+		s.auctions[tokenContract][tokenId].amount = amount;
+		s.auctions[tokenContract][tokenId].bidder = payable(msg.sender);
 
 		bool extended = false;
 		// at this point we know that the timestamp is less than start + duration (since the auction would be over, otherwise)
 		// we want to know by how much the timestamp is less than start + duration
 		// if the difference is less than the timeBuffer, increase the duration by the timeBuffer
 		if (
-			auctions[auctionId]
+			s
+				.auctions[tokenContract][tokenId]
 				.firstBidTime
-				.add(auctions[auctionId].duration)
-				.sub(block.timestamp) < timeBuffer
+				.add(s.auctions[tokenContract][tokenId].duration)
+				.sub(block.timestamp) < s.timeBuffer
 		) {
 			// Playing code golf for gas optimization:
-			// uint256 expectedEnd = auctions[auctionId].firstBidTime.add(auctions[auctionId].duration);
+			// uint256 expectedEnd = s.auctions[tokenContract][tokenId].firstBidTime.add(s.auctions[tokenContract][tokenId].duration);
 			// uint256 timeRemaining = expectedEnd.sub(block.timestamp);
 			// uint256 timeToAdd = timeBuffer.sub(timeRemaining);
-			// uint256 newDuration = auctions[auctionId].duration.add(timeToAdd);
-			uint256 oldDuration = auctions[auctionId].duration;
-			auctions[auctionId].duration = oldDuration.add(
-				timeBuffer.sub(
-					auctions[auctionId].firstBidTime.add(oldDuration).sub(
-						block.timestamp
-					)
+			// uint256 newDuration = s.auctions[tokenContract][tokenId].duration.add(timeToAdd);
+			uint256 oldDuration = s.auctions[tokenContract][tokenId].duration;
+			s.auctions[tokenContract][tokenId].duration = oldDuration.add(
+				s.timeBuffer.sub(
+					s
+						.auctions[tokenContract][tokenId]
+						.firstBidTime
+						.add(oldDuration)
+						.sub(block.timestamp)
 				)
 			);
 			extended = true;
 		}
 
 		emit AuctionBid(
-			auctionId,
-			auctions[auctionId].tokenId,
-			auctions[auctionId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenId,
 			msg.sender,
 			amount,
 			lastBidder == address(0), // firstBid boolean
@@ -309,10 +314,9 @@ contract AuctionHouse is
 
 		if (extended) {
 			emit AuctionDurationExtended(
-				auctionId,
-				auctions[auctionId].tokenId,
-				auctions[auctionId].tokenContract,
-				auctions[auctionId].duration
+				s.auctions[tokenContract][tokenId].tokenContract,
+				s.auctions[tokenContract][tokenId].tokenId,
+				s.auctions[tokenContract][tokenId].duration
 			);
 		}
 	}
@@ -322,118 +326,104 @@ contract AuctionHouse is
 	 * @dev If for some reason the auction cannot be finalized (invalid token recipient, for example),
 	 * The auction is reset and the NFT is transferred back to the auction creator.
 	 */
-	function endAuction(uint256 auctionId)
+	function endAuction(address tokenContract, uint256 tokenId)
 		external
 		override
-		auctionExists(auctionId)
+		auctionExists(tokenContract, tokenId)
 		nonReentrant
 	{
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
 		require(
-			uint256(auctions[auctionId].firstBidTime) != 0,
+			uint256(s.auctions[tokenContract][tokenId].firstBidTime) != 0,
 			"Auction hasn't begun"
 		);
 		require(
 			block.timestamp >=
-				auctions[auctionId].firstBidTime.add(
-					auctions[auctionId].duration
+				s.auctions[tokenContract][tokenId].firstBidTime.add(
+					s.auctions[tokenContract][tokenId].duration
 				),
 			"Auction hasn't completed"
 		);
 
-		address currency = auctions[auctionId].auctionCurrency == address(0)
-			? wethAddress
-			: auctions[auctionId].auctionCurrency;
+		address currency = s.auctions[tokenContract][tokenId].auctionCurrency ==
+			address(0)
+			? s.wethContract
+			: s.auctions[tokenContract][tokenId].auctionCurrency;
 		uint256 curatorFee = 0;
 
-		uint256 tokenOwnerProfit = auctions[auctionId].amount;
+		uint256 tokenOwnerProfit = s.auctions[tokenContract][tokenId].amount;
 
-		// if (auctions[auctionId].tokenContract == zora) {
-		// 	// If the auction is running on zora, settle it on the protocol
-		// 	(
-		// 		bool success,
-		// 		uint256 remainingProfit
-		// 	) = _handleZoraAuctionSettlement(auctionId);
-		// 	tokenOwnerProfit = remainingProfit;
-		// 	if (success != true) {
-		// 		_handleOutgoingBid(
-		// 			auctions[auctionId].bidder,
-		// 			auctions[auctionId].amount,
-		// 			auctions[auctionId].auctionCurrency
-		// 		);
-		// 		_cancelAuction(auctionId);
-		// 		return;
-		// 	}
-		// } else {
-		// Otherwise, transfer the token to the winner and pay out the participants below
+		// Transfer the token to the winner and pay out the participants below
 		try
-			IERC721Upgradeable(auctions[auctionId].tokenContract)
+			IERC721Upgradeable(s.auctions[tokenContract][tokenId].tokenContract)
 				.safeTransferFrom(
 					address(this),
-					auctions[auctionId].bidder,
-					auctions[auctionId].tokenId
+					s.auctions[tokenContract][tokenId].bidder,
+					s.auctions[tokenContract][tokenId].tokenId
 				)
 		{} catch {
 			_handleOutgoingBid(
-				auctions[auctionId].bidder,
-				auctions[auctionId].amount,
-				auctions[auctionId].auctionCurrency
+				s.auctions[tokenContract][tokenId].bidder,
+				s.auctions[tokenContract][tokenId].amount,
+				s.auctions[tokenContract][tokenId].auctionCurrency
 			);
-			_cancelAuction(auctionId);
+			_cancelAuction(tokenContract, tokenId);
 			return;
 		}
-		// }
 
-		if (auctions[auctionId].curator != address(0)) {
+		if (s.auctions[tokenContract][tokenId].curator != address(0)) {
 			curatorFee = tokenOwnerProfit
-				.mul(auctions[auctionId].curatorFeePercentage)
+				.mul(s.auctions[tokenContract][tokenId].curatorFeePercentage)
 				.div(100);
 			tokenOwnerProfit = tokenOwnerProfit.sub(curatorFee);
 			_handleOutgoingBid(
-				auctions[auctionId].curator,
+				s.auctions[tokenContract][tokenId].curator,
 				curatorFee,
-				auctions[auctionId].auctionCurrency
+				s.auctions[tokenContract][tokenId].auctionCurrency
 			);
 		}
 		_handleOutgoingBid(
-			auctions[auctionId].tokenOwner,
+			s.auctions[tokenContract][tokenId].tokenOwner,
 			tokenOwnerProfit,
-			auctions[auctionId].auctionCurrency
+			s.auctions[tokenContract][tokenId].auctionCurrency
 		);
 
 		emit AuctionEnded(
-			auctionId,
-			auctions[auctionId].tokenId,
-			auctions[auctionId].tokenContract,
-			auctions[auctionId].tokenOwner,
-			auctions[auctionId].curator,
-			auctions[auctionId].bidder,
+			tokenContract,
+			tokenId,
+			s.auctions[tokenContract][tokenId].tokenOwner,
+			s.auctions[tokenContract][tokenId].curator,
+			s.auctions[tokenContract][tokenId].bidder,
 			tokenOwnerProfit,
 			curatorFee,
 			currency
 		);
-		delete auctions[auctionId];
+		// delete s.auctions[tokenContract][tokenId];
+		s.auctions[tokenContract][tokenId].isActive = false;
 	}
 
 	/**
 	 * @notice Cancel an auction.
 	 * @dev Transfers the NFT back to the auction creator and emits an AuctionCanceled event
 	 */
-	function cancelAuction(uint256 auctionId)
+	function cancelAuction(address tokenContract, uint256 tokenId)
 		external
 		override
 		nonReentrant
-		auctionExists(auctionId)
+		auctionExists(tokenContract, tokenId)
 	{
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
 		require(
-			auctions[auctionId].tokenOwner == msg.sender ||
-				auctions[auctionId].curator == msg.sender,
+			s.auctions[tokenContract][tokenId].tokenOwner == msg.sender ||
+				s.auctions[tokenContract][tokenId].curator == msg.sender,
 			'Can only be called by auction creator or curator'
 		);
 		require(
-			uint256(auctions[auctionId].firstBidTime) == 0,
+			uint256(s.auctions[tokenContract][tokenId].firstBidTime) == 0,
 			"Can't cancel an auction once it's begun"
 		);
-		_cancelAuction(auctionId);
+		_cancelAuction(tokenContract, tokenId);
 	}
 
 	/**
@@ -441,13 +431,15 @@ contract AuctionHouse is
 	 * If the currency is ETH (0x0), attempt to wrap the amount as WETH
 	 */
 	function _handleIncomingBid(uint256 amount, address currency) internal {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
 		// If this is an ETH bid, ensure they sent enough and convert it to WETH under the hood
 		if (currency == address(0)) {
 			require(
 				msg.value == amount,
 				'Sent ETH Value does not match specified bid amount'
 			);
-			IWETH(wethAddress).deposit{value: amount}();
+			IWETH(s.wethContract).deposit{value: amount}();
 		} else {
 			// We must check the balance that was actually transferred to the auction,
 			// as some tokens impose a transfer fee and would not actually transfer the
@@ -468,14 +460,16 @@ contract AuctionHouse is
 		uint256 amount,
 		address currency
 	) internal {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
 		// If the auction is in ETH, unwrap it from its underlying WETH and try to send it to the recipient.
 		if (currency == address(0)) {
-			IWETH(wethAddress).withdraw(amount);
+			IWETH(s.wethContract).withdraw(amount);
 
 			// If the ETH transfer fails (sigh), rewrap the ETH and try send it as WETH.
 			if (!_safeTransferETH(to, amount)) {
-				IWETH(wethAddress).deposit{value: amount}();
-				IERC20Upgradeable(wethAddress).safeTransfer(to, amount);
+				IWETH(s.wethContract).deposit{value: amount}();
+				IERC20Upgradeable(s.wethContract).safeTransfer(to, amount);
 			}
 		} else {
 			IERC20Upgradeable(currency).safeTransfer(to, amount);
@@ -490,35 +484,48 @@ contract AuctionHouse is
 		return success;
 	}
 
-	function _cancelAuction(uint256 auctionId) internal {
-		address tokenOwner = auctions[auctionId].tokenOwner;
-		IERC721Upgradeable(auctions[auctionId].tokenContract).safeTransferFrom(
-			address(this),
-			tokenOwner,
-			auctions[auctionId].tokenId
-		);
+	function _cancelAuction(address tokenContract, uint256 tokenId) internal {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		address tokenOwner = s.auctions[tokenContract][tokenId].tokenOwner;
+		IERC721Upgradeable(s.auctions[tokenContract][tokenId].tokenContract)
+			.safeTransferFrom(
+				address(this),
+				tokenOwner,
+				s.auctions[tokenContract][tokenId].tokenId
+			);
 
 		emit AuctionCanceled(
-			auctionId,
-			auctions[auctionId].tokenId,
-			auctions[auctionId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenId,
 			tokenOwner
 		);
-		delete auctions[auctionId];
+		// delete s.auctions[tokenContract][tokenId];
+		s.auctions[tokenContract][tokenId].isActive = false;
 	}
 
-	function _approveAuction(uint256 auctionId, bool approved) internal {
-		auctions[auctionId].approved = approved;
+	function _approveAuction(
+		address tokenContract,
+		uint256 tokenId,
+		bool approved
+	) internal {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		s.auctions[tokenContract][tokenId].approved = approved;
 		emit AuctionApprovalUpdated(
-			auctionId,
-			auctions[auctionId].tokenId,
-			auctions[auctionId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenId,
 			approved
 		);
 	}
 
-	function _exists(uint256 auctionId) internal view returns (bool) {
-		return auctions[auctionId].tokenOwner != address(0);
+	function _exists(address tokenContract, uint256 tokenId)
+		internal
+		view
+		returns (bool)
+	{
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		return s.auctions[tokenContract][tokenId].isActive;
 	}
 
 	// function _handleZoraAuctionSettlement(uint256 auctionId)
@@ -563,6 +570,4 @@ contract AuctionHouse is
 	receive() external payable {}
 
 	fallback() external payable {}
-
-	function _authorizeUpgrade(address newImplementation) internal override {}
 }

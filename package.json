@@ -64,6 +64,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.4.0",
+    "@solidstate/contracts": "^0.0.28",
     "dotenv": "^10.0.0",
     "fs-extra": "^9.1.0",
     "minimist": "^1.2.5",

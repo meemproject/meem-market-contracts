@@ -1307,6 +1307,11 @@
   dependencies:
     antlr4ts "^0.5.0-alpha.4"
 
+"@solidstate/contracts@^0.0.28":
+  version "0.0.28"
+  resolved "https://registry.yarnpkg.com/@solidstate/contracts/-/contracts-0.0.28.tgz#2c363f3cbff01ddefb9e25853c31a422f6d8f64d"
+  integrity sha512-++O7LQ1JBn5E7aazM6+5BGZmbUmkNWuFLiBmgquKHqVxjyiZnkVf2g/WfuJRDnqp7BxiYPLudi9sM2jurKya2Q==
+
 "@szmarczak/http-timer@^1.1.2":
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/@szmarczak/http-timer/-/http-timer-1.1.2.tgz#b1665e2c461a2cd92f4c1bbf50d5454de0d4b421"

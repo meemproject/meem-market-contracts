@@ -15,8 +15,7 @@ dotenv.config()
 
 const config: HardhatUserConfig = {
 	solidity: {
-		// version: '0.6.8',
-		version: '0.8.2',
+		version: '0.8.4',
 		settings: {
 			optimizer: {
 				enabled: true,
