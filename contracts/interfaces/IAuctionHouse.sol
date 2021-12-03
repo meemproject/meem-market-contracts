@@ -102,7 +102,7 @@ interface IAuctionHouse {
 		address payable curator,
 		uint8 curatorFeePercentages,
 		address auctionCurrency
-	) external returns (uint256);
+	) external;
 
 	function setAuctionApproval(
 		address tokenContract,

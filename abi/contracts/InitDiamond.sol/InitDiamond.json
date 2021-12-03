@@ -4,34 +4,14 @@
       {
         "components": [
           {
-            "internalType": "string",
-            "name": "name",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "symbol",
-            "type": "string"
-          },
-          {
-            "internalType": "uint256",
-            "name": "childDepth",
-            "type": "uint256"
-          },
-          {
-            "internalType": "uint256",
-            "name": "nonOwnerSplitAllocationAmount",
-            "type": "uint256"
-          },
-          {
             "internalType": "address",
-            "name": "proxyRegistryAddress",
+            "name": "meemContract",
             "type": "address"
           },
           {
-            "internalType": "string",
-            "name": "contractURI",
-            "type": "string"
+            "internalType": "address",
+            "name": "wethContract",
+            "type": "address"
           }
         ],
         "internalType": "struct InitDiamond.Args",

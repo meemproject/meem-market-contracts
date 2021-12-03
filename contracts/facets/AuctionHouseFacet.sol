@@ -91,7 +91,7 @@ contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
 		address payable curator,
 		uint8 curatorFeePercentage,
 		address auctionCurrency
-	) public override nonReentrant returns (uint256) {
+	) external override nonReentrant {
 		require(
 			IERC165Upgradeable(tokenContract).supportsInterface(
 				Constants.erc721InterfaceId
@@ -274,51 +274,8 @@ contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
 		s.auctions[tokenContract][tokenId].amount = amount;
 		s.auctions[tokenContract][tokenId].bidder = payable(msg.sender);
 
-		bool extended = false;
-		// at this point we know that the timestamp is less than start + duration (since the auction would be over, otherwise)
-		// we want to know by how much the timestamp is less than start + duration
-		// if the difference is less than the timeBuffer, increase the duration by the timeBuffer
-		if (
-			s
-				.auctions[tokenContract][tokenId]
-				.firstBidTime
-				.add(s.auctions[tokenContract][tokenId].duration)
-				.sub(block.timestamp) < s.timeBuffer
-		) {
-			// Playing code golf for gas optimization:
-			// uint256 expectedEnd = s.auctions[tokenContract][tokenId].firstBidTime.add(s.auctions[tokenContract][tokenId].duration);
-			// uint256 timeRemaining = expectedEnd.sub(block.timestamp);
-			// uint256 timeToAdd = timeBuffer.sub(timeRemaining);
-			// uint256 newDuration = s.auctions[tokenContract][tokenId].duration.add(timeToAdd);
-			uint256 oldDuration = s.auctions[tokenContract][tokenId].duration;
-			s.auctions[tokenContract][tokenId].duration = oldDuration.add(
-				s.timeBuffer.sub(
-					s
-						.auctions[tokenContract][tokenId]
-						.firstBidTime
-						.add(oldDuration)
-						.sub(block.timestamp)
-				)
-			);
-			extended = true;
-		}
-
-		emit AuctionBid(
-			s.auctions[tokenContract][tokenId].tokenContract,
-			s.auctions[tokenContract][tokenId].tokenId,
-			msg.sender,
-			amount,
-			lastBidder == address(0), // firstBid boolean
-			extended
-		);
-
-		if (extended) {
-			emit AuctionDurationExtended(
-				s.auctions[tokenContract][tokenId].tokenContract,
-				s.auctions[tokenContract][tokenId].tokenId,
-				s.auctions[tokenContract][tokenId].duration
-			);
-		}
+		// Finalize bid in separate function to prevent stack limit error
+		_finalizeBid(tokenContract, tokenId, amount, lastBidder == address(0));
 	}
 
 	/**
@@ -424,6 +381,61 @@ contract AuctionHouse is IAuctionHouse, ReentrancyGuard {
 			"Can't cancel an auction once it's begun"
 		);
 		_cancelAuction(tokenContract, tokenId);
+	}
+
+	function _finalizeBid(
+		address tokenContract,
+		uint256 tokenId,
+		uint256 amount,
+		bool isFirstBid
+	) internal {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		bool extended = false;
+		// at this point we know that the timestamp is less than start + duration (since the auction would be over, otherwise)
+		// we want to know by how much the timestamp is less than start + duration
+		// if the difference is less than the timeBuffer, increase the duration by the timeBuffer
+		if (
+			s
+				.auctions[tokenContract][tokenId]
+				.firstBidTime
+				.add(s.auctions[tokenContract][tokenId].duration)
+				.sub(block.timestamp) < s.timeBuffer
+		) {
+			// Playing code golf for gas optimization:
+			// uint256 expectedEnd = s.auctions[tokenContract][tokenId].firstBidTime.add(s.auctions[tokenContract][tokenId].duration);
+			// uint256 timeRemaining = expectedEnd.sub(block.timestamp);
+			// uint256 timeToAdd = timeBuffer.sub(timeRemaining);
+			// uint256 newDuration = s.auctions[tokenContract][tokenId].duration.add(timeToAdd);
+			uint256 oldDuration = s.auctions[tokenContract][tokenId].duration;
+			s.auctions[tokenContract][tokenId].duration = oldDuration.add(
+				s.timeBuffer.sub(
+					s
+						.auctions[tokenContract][tokenId]
+						.firstBidTime
+						.add(oldDuration)
+						.sub(block.timestamp)
+				)
+			);
+			extended = true;
+		}
+
+		emit AuctionBid(
+			s.auctions[tokenContract][tokenId].tokenContract,
+			s.auctions[tokenContract][tokenId].tokenId,
+			msg.sender,
+			amount,
+			isFirstBid,
+			extended
+		);
+
+		if (extended) {
+			emit AuctionDurationExtended(
+				s.auctions[tokenContract][tokenId].tokenContract,
+				s.auctions[tokenContract][tokenId].tokenId,
+				s.auctions[tokenContract][tokenId].duration
+			);
+		}
 	}
 
 	/**
