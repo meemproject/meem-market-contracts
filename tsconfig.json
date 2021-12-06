@@ -1,21 +1,32 @@
 {
   "compilerOptions": {
-    "target": "es2018",
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "declaration": true,
-    "sourceMap": true,
-    "strict": false,
-    "esModuleInterop": true,
+    /*
+     * Uncomment for small accuracy reduction & vast build time reduction for
+     * --watch mode
+     */
+    // "assumeChangesOnlyAffectDirectDependencies": true,
     "allowSyntheticDefaultImports": true,
+    "alwaysStrict": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "incremental": true,
+    "lib": ["esnext"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "noImplicitThis":true,
     "outDir": "dist",
-    "resolveJsonModule": true
+    "skipLibCheck": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "target": "es6",
   },
+  "exclude": ["**/dist"],
   "include": [
-    "./typechain",
-    "./addresses",
-    "index.ts"
+    "./tasks",
+    "./test",
+    "./typechain"
   ],
   "files": ["./hardhat.config.ts"]
 }
