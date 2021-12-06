@@ -8,3 +8,7 @@ error NoRenounceOthers();
 error AuctionAlreadyActive();
 
 error AuctionNotFound();
+
+error TokenNotSupported();
+
+error TokenAuctionNotAllowed();

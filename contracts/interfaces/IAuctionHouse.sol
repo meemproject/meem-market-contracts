@@ -81,10 +81,8 @@ interface IAuctionHouse {
 		address indexed tokenContract,
 		uint256 indexed tokenId,
 		address tokenOwner,
-		address curator,
 		address winner,
 		uint256 amount,
-		uint256 curatorFee,
 		address auctionCurrency
 	);
 
@@ -101,7 +99,8 @@ interface IAuctionHouse {
 		uint256 reservePrice,
 		address payable curator,
 		uint8 curatorFeePercentages,
-		address auctionCurrency
+		address auctionCurrency,
+		uint256 timeBuffer
 	) external;
 
 	function setAuctionApproval(

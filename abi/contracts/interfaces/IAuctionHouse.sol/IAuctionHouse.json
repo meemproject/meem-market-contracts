@@ -196,12 +196,6 @@
       {
         "indexed": false,
         "internalType": "address",
-        "name": "curator",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
         "name": "winner",
         "type": "address"
       },
@@ -209,12 +203,6 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "amount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "curatorFee",
         "type": "uint256"
       },
       {
@@ -306,6 +294,11 @@
         "internalType": "address",
         "name": "auctionCurrency",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timeBuffer",
+        "type": "uint256"
       }
     ],
     "name": "createAuction",

@@ -10,8 +10,12 @@ import {SafeERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ER
 import {IAuctionHouse} from '../interfaces/IAuctionHouse.sol';
 import '@solidstate/contracts/utils/ReentrancyGuard.sol';
 import {Constants} from '../libraries/Constants.sol';
-import {AuctionAlreadyActive, AuctionNotFound} from '../libraries/Errors.sol';
+import {AuctionAlreadyActive, AuctionNotFound, TokenAuctionNotAllowed, TokenNotSupported} from '../libraries/Errors.sol';
 import {LibAppStorage} from '../storage/LibAppStorage.sol';
+import {RoyaltiesV2} from '../royalties/RoyaltiesV2.sol';
+import {LibPart} from '../royalties/LibPart.sol';
+import {IRoyaltiesProvider} from '../royalties/IRoyaltiesProvider.sol';
+import {Meem, IMeemQueryStandard} from '../interfaces/IMeem.sol';
 
 interface IWETH {
 	function deposit() external payable;
@@ -21,10 +25,21 @@ interface IWETH {
 	function transfer(address to, uint256 value) external returns (bool);
 }
 
+struct AuctionSplit {
+	address[] to;
+	uint256[] amounts;
+	uint256 totalSplitAmount;
+	uint256 tokenOwnerProfit;
+}
+
 /**
  * @title An open auction house, enabling collectors and curators to run their own auctions
  */
-contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
+contract AuctionHouseFacet is
+	IAuctionHouse,
+	IRoyaltiesProvider,
+	ReentrancyGuard
+{
 	using SafeMathUpgradeable for uint256;
 	using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -74,8 +89,34 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 	// 	minBidIncrementPercentage = 5; // 5%
 	// }
 
-	function echo() public pure returns (string memory) {
-		return 'Hello Auction House!';
+	function getAuction(address tokenContract, uint256 tokenId)
+		external
+		view
+		returns (IAuctionHouse.Auction memory)
+	{
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		return s.auctions[tokenContract][tokenId];
+	}
+
+	function getMeemContractAddress() external view returns (address) {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		return s.meemContract;
+	}
+
+	function getRoyalties(address token, uint256 tokenId)
+		public
+		view
+		override
+		returns (LibPart.Part[] memory)
+	{
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		if (token != s.meemContract) {
+			revert TokenNotSupported();
+		}
+		RoyaltiesV2 royalties = RoyaltiesV2(s.meemContract);
+		LibPart.Part[] memory parts = royalties.getRaribleV2Royalties(tokenId);
+
+		return parts;
 	}
 
 	/**
@@ -90,7 +131,8 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 		uint256 reservePrice,
 		address payable curator,
 		uint8 curatorFeePercentage,
-		address auctionCurrency
+		address auctionCurrency,
+		uint256 timeBuffer
 	) external override nonReentrant {
 		require(
 			IERC165Upgradeable(tokenContract).supportsInterface(
@@ -111,10 +153,19 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 		);
 
 		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		if (tokenContract != s.meemContract) {
+			revert TokenNotSupported();
+		}
+
 		// uint256 auctionId = _auctionIdTracker.current();
 
 		if (s.auctions[tokenContract][tokenId].isActive) {
 			revert AuctionAlreadyActive();
+		}
+
+		if (!_canAuctionMeem(tokenId)) {
+			revert TokenAuctionNotAllowed();
 		}
 
 		s.auctions[tokenContract][tokenId] = Auction({
@@ -131,7 +182,7 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 			bidder: payable(address(0)),
 			curator: curator,
 			auctionCurrency: auctionCurrency,
-			timeBuffer: s.timeBuffer,
+			timeBuffer: timeBuffer,
 			minBidIncrementPercentage: s.minBidIncrementPercentage
 		});
 
@@ -160,6 +211,19 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 		) {
 			_approveAuction(tokenContract, tokenId, true);
 		}
+	}
+
+	function _canAuctionMeem(uint256 tokenId) internal view returns (bool) {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		IMeemQueryStandard meemQuery = IMeemQueryStandard(s.meemContract);
+		Meem memory meem = meemQuery.getMeem(tokenId);
+
+		if (meem.parent == s.meemContract || meem.parent == address(0)) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -307,7 +371,7 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 			address(0)
 			? s.wethContract
 			: s.auctions[tokenContract][tokenId].auctionCurrency;
-		uint256 curatorFee = 0;
+		// uint256 curatorFee = 0;
 
 		uint256 tokenOwnerProfit = s.auctions[tokenContract][tokenId].amount;
 
@@ -329,6 +393,118 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 			return;
 		}
 
+		tokenOwnerProfit = _settleAuctionCuratorFee(
+			tokenContract,
+			tokenId,
+			tokenOwnerProfit
+		);
+
+		tokenOwnerProfit = _settleAuctionRoyalties(
+			tokenContract,
+			tokenId,
+			tokenOwnerProfit
+		);
+
+		// if (s.auctions[tokenContract][tokenId].curator != address(0)) {
+		// 	curatorFee = tokenOwnerProfit
+		// 		.mul(s.auctions[tokenContract][tokenId].curatorFeePercentage)
+		// 		.div(100);
+		// 	tokenOwnerProfit = tokenOwnerProfit.sub(curatorFee);
+		// 	_handleOutgoingBid(
+		// 		s.auctions[tokenContract][tokenId].curator,
+		// 		curatorFee,
+		// 		s.auctions[tokenContract][tokenId].auctionCurrency
+		// 	);
+		// }
+
+		// Get splits
+		// uint256 totalSplitAmount = 0;
+		// LibPart.Part[] memory parts = getRoyalties(tokenContract, tokenId);
+		// for (uint256 i = 0; i < parts.length; i++) {
+		// 	uint256 splitAmount = tokenOwnerProfit.mul(parts[i].value).div(
+		// 		10000
+		// 	);
+
+		// 	_handleOutgoingBid(
+		// 		parts[i].account,
+		// 		splitAmount,
+		// 		s.auctions[tokenContract][tokenId].auctionCurrency
+		// 	);
+		// 	totalSplitAmount.add(splitAmount);
+		// }
+		// tokenOwnerProfit = tokenOwnerProfit.sub(totalSplitAmount);
+
+		_handleOutgoingBid(
+			s.auctions[tokenContract][tokenId].tokenOwner,
+			tokenOwnerProfit,
+			s.auctions[tokenContract][tokenId].auctionCurrency
+		);
+
+		emit AuctionEnded(
+			tokenContract,
+			tokenId,
+			s.auctions[tokenContract][tokenId].tokenOwner,
+			s.auctions[tokenContract][tokenId].bidder,
+			tokenOwnerProfit,
+			currency
+		);
+		// delete s.auctions[tokenContract][tokenId];
+		s.auctions[tokenContract][tokenId].isActive = false;
+	}
+
+	function getAuctionSplits(
+		address tokenContract,
+		uint256 tokenId,
+		uint256 tokenOwnerProfit
+	) external view returns (AuctionSplit memory) {
+		address[] memory to = new address[](10);
+		uint256[] memory amounts = new uint256[](10);
+		uint256 newTokenOwnerProfit = tokenOwnerProfit;
+		uint256 numSplits;
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		uint256 curatorFee = newTokenOwnerProfit
+			.mul(s.auctions[tokenContract][tokenId].curatorFeePercentage)
+			.div(100);
+		newTokenOwnerProfit = newTokenOwnerProfit.sub(curatorFee);
+
+		to[numSplits] = s.auctions[tokenContract][tokenId].curator;
+		amounts[numSplits] = curatorFee;
+		numSplits++;
+
+		uint256 totalSplitAmount = 0;
+		LibPart.Part[] memory parts = getRoyalties(tokenContract, tokenId);
+
+		// TODO: Validate royalty amounts even though meem contract should always return valid amounts
+
+		for (uint256 i = 0; i < parts.length; i++) {
+			uint256 splitAmount = newTokenOwnerProfit.mul(parts[i].value).div(
+				10000
+			);
+
+			to[numSplits] = parts[i].account;
+			amounts[numSplits] = splitAmount;
+
+			totalSplitAmount = totalSplitAmount.add(splitAmount);
+			numSplits++;
+		}
+		newTokenOwnerProfit = newTokenOwnerProfit.sub(totalSplitAmount);
+
+		return
+			AuctionSplit({
+				to: to,
+				amounts: amounts,
+				totalSplitAmount: totalSplitAmount,
+				tokenOwnerProfit: newTokenOwnerProfit
+			});
+	}
+
+	function _settleAuctionCuratorFee(
+		address tokenContract,
+		uint256 tokenId,
+		uint256 tokenOwnerProfit
+	) internal returns (uint256) {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		uint256 curatorFee = 0;
 		if (s.auctions[tokenContract][tokenId].curator != address(0)) {
 			curatorFee = tokenOwnerProfit
 				.mul(s.auctions[tokenContract][tokenId].curatorFeePercentage)
@@ -340,24 +516,36 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 				s.auctions[tokenContract][tokenId].auctionCurrency
 			);
 		}
-		_handleOutgoingBid(
-			s.auctions[tokenContract][tokenId].tokenOwner,
-			tokenOwnerProfit,
-			s.auctions[tokenContract][tokenId].auctionCurrency
-		);
 
-		emit AuctionEnded(
-			tokenContract,
-			tokenId,
-			s.auctions[tokenContract][tokenId].tokenOwner,
-			s.auctions[tokenContract][tokenId].curator,
-			s.auctions[tokenContract][tokenId].bidder,
-			tokenOwnerProfit,
-			curatorFee,
-			currency
-		);
-		// delete s.auctions[tokenContract][tokenId];
-		s.auctions[tokenContract][tokenId].isActive = false;
+		return tokenOwnerProfit;
+	}
+
+	function _settleAuctionRoyalties(
+		address tokenContract,
+		uint256 tokenId,
+		uint256 tokenOwnerProfit
+	) internal returns (uint256) {
+		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+		uint256 totalSplitAmount = 0;
+		LibPart.Part[] memory parts = getRoyalties(tokenContract, tokenId);
+
+		// TODO: Validate royalty amounts even though meem contract should always return valid amounts
+
+		for (uint256 i = 0; i < parts.length; i++) {
+			uint256 splitAmount = tokenOwnerProfit.mul(parts[i].value).div(
+				10000
+			);
+
+			_handleOutgoingBid(
+				parts[i].account,
+				splitAmount,
+				s.auctions[tokenContract][tokenId].auctionCurrency
+			);
+			totalSplitAmount = totalSplitAmount.add(splitAmount);
+		}
+		tokenOwnerProfit = tokenOwnerProfit.sub(totalSplitAmount);
+
+		return tokenOwnerProfit;
 	}
 
 	/**
@@ -400,7 +588,8 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 				.auctions[tokenContract][tokenId]
 				.firstBidTime
 				.add(s.auctions[tokenContract][tokenId].duration)
-				.sub(block.timestamp) < s.timeBuffer
+				.sub(block.timestamp) <
+			s.auctions[tokenContract][tokenId].timeBuffer
 		) {
 			// Playing code golf for gas optimization:
 			// uint256 expectedEnd = s.auctions[tokenContract][tokenId].firstBidTime.add(s.auctions[tokenContract][tokenId].duration);
@@ -409,7 +598,7 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 			// uint256 newDuration = s.auctions[tokenContract][tokenId].duration.add(timeToAdd);
 			uint256 oldDuration = s.auctions[tokenContract][tokenId].duration;
 			s.auctions[tokenContract][tokenId].duration = oldDuration.add(
-				s.timeBuffer.sub(
+				s.auctions[tokenContract][tokenId].timeBuffer.sub(
 					s
 						.auctions[tokenContract][tokenId]
 						.firstBidTime
@@ -473,6 +662,10 @@ contract AuctionHouseFacet is IAuctionHouse, ReentrancyGuard {
 		address currency
 	) internal {
 		LibAppStorage.AppStorage storage s = LibAppStorage.diamondStorage();
+
+		if (amount == 0) {
+			return;
+		}
 
 		// If the auction is in ETH, unwrap it from its underlying WETH and try to send it to the recipient.
 		if (currency == address(0)) {
