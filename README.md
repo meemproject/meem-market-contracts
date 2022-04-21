@@ -1,3 +1,7 @@
+# DEPRECATED
+
+These contracts are now managed at: https://github.com/meemproject/meem-packages
+
 # Meem Market
 
 A place to buy, sell, and auction [Meems](https://meem.wtf).
